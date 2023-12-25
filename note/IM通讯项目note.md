@@ -407,3 +407,202 @@ func InitMYSQL() {
 ```
 
 ### 5.完成用户模块基本的功能
+
+#### -1.显示所有用户
+
+userService.go
+
+```go
+// GetUserList
+// @Summary 所有用户
+// @Tags 首页
+// @Success 200 {string} json{"code","message"}
+// @Router /user/getUserList [get]
+func GetUserList(c *gin.Context) {
+	//拿到数据
+	data := models.GetUserList()
+	c.JSON(http.StatusOK, gin.H{
+		"message": data,
+	})
+}
+```
+
+model层下的user_basic
+
+```go
+func GetUserList() []*UserBasic {
+	data := make([]*UserBasic, 10)
+	utils.DB.Find(&data)
+	for _, v := range data {
+		fmt.Println(v)
+	}
+	return data
+}
+```
+
+Router/app.go
+
+```go
+r.GET("/user/getUserList", service.GetUserList)
+```
+
+#### -2.新增用户
+
+userService.go
+
+```go
+// CreateUser
+// @Summary 新增用户
+// @Tags 用户模块
+// @param name query string false "用户名"
+// @param password query string false "密码"
+// @param repassword query string false "确认密码"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/createUser [get]
+func CreateUser(c *gin.Context) {
+	//拿到数据
+	user := models.UserBasic{}
+	user.Name = c.Query("name")
+	password := c.Query("password")
+	repassword := c.Query("repassword")
+	if password != repassword {
+		c.JSON(-1, gin.H{
+			"message": "两次密码不一致！",
+		})
+		return
+	}
+	//将密码给user对象
+	user.PassWord = password
+	models.CreateUser(user) //推入数据库中
+	c.JSON(200, gin.H{
+		"message": "新增用户成功",
+	})
+}
+```
+
+model层下的user_basic
+
+```go
+// 创建user
+func CreateUser(user UserBasic) *gorm.DB {
+	return utils.DB.Create(&user)
+}
+```
+
+Router/app.go
+
+```go
+r.GET("/user/createUser", service.CreateUser)
+```
+
+#### -3.删除用户
+
+userService.go
+
+```go
+// DeleteUser
+// @Summary 删除用户
+// @Tags 用户模块
+// @param id query string false "id"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/deleteUser [get]
+func DeleteUser(c *gin.Context) {
+	//拿到数据
+	user := models.UserBasic{}
+	id, _ := strconv.Atoi(c.Query("id"))
+	user.ID = uint(id)
+	models.DeleteUser(user) //推入数据库中
+	c.JSON(200, gin.H{
+		"message": "删除用户成功",
+	})
+}
+```
+
+model层下的user_basic
+
+```go
+// 删除用户
+func DeleteUser(user UserBasic) *gorm.DB {
+	return utils.DB.Delete(&user)
+}
+```
+
+Router/app.go
+
+```go
+r.GET("/user/deleteUser", service.DeleteUser)
+```
+
+-4.修改用户
+
+userService.go
+
+```go
+// UpdateUser
+// @Summary 修改用户
+// @Tags 用户模块
+// @param id formData string false "id"
+// @param name formData string false "name"
+// @param password formData string false "password"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/updateUser [post]
+func UpdateUser(c *gin.Context) {
+	//拿到数据
+	user := models.UserBasic{}
+	id, _ := strconv.Atoi(c.PostForm("id"))
+	user.ID = uint(id)
+	user.Name = c.PostForm("name")
+	user.PassWord = c.PostForm("password")
+
+	models.UpdateUser(user) //推入数据库中
+	c.JSON(200, gin.H{
+		"message": "修改用户成功",
+	})
+}
+
+```
+
+model层下的user_basic
+
+```go
+//修改用户
+
+func UpdateUser(user UserBasic) *gorm.DB {
+	return utils.DB.Model(&user).Updates(UserBasic{Name: user.Name, PassWord: user.PassWord})
+}
+```
+
+Router/app.go
+
+```go
+r.POST("/user/updateUser", service.UpdateUser)
+```
+
+Router/app下的所有Code
+
+```go
+package router
+
+import (
+	"IMsystemchat/docs"
+	"IMsystemchat/service"
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+)
+
+func Router() *gin.Engine {
+	r := gin.Default()
+	docs.SwaggerInfo.BasePath = ""
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	r.GET("/index", service.GetIndex)
+	r.GET("/user/getUserList", service.GetUserList)
+	r.GET("/user/createUser", service.CreateUser)
+	r.GET("/user/deleteUser", service.DeleteUser)
+	r.POST("/user/updateUser", service.UpdateUser)
+	return r
+
+}
+
+```
+
