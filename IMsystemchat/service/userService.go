@@ -2,6 +2,8 @@ package service
 
 import (
 	"IMsystemchat/models"
+	"fmt"
+	"github.com/asaskevich/govalidator"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
@@ -71,6 +73,8 @@ func DeleteUser(c *gin.Context) {
 // @param id formData string false "id"
 // @param name formData string false "name"
 // @param password formData string false "password"
+// @param phone formData string false "phone"
+// @param email formData string false "email"
 // @Success 200 {string} json{"code","message"}
 // @Router /user/updateUser [post]
 func UpdateUser(c *gin.Context) {
@@ -80,9 +84,19 @@ func UpdateUser(c *gin.Context) {
 	user.ID = uint(id)
 	user.Name = c.PostForm("name")
 	user.PassWord = c.PostForm("password")
-
-	models.UpdateUser(user) //推入数据库中
-	c.JSON(200, gin.H{
-		"message": "修改用户成功",
-	})
+	user.Phone = c.PostForm("phone")
+	user.Email = c.PostForm("email")
+	fmt.Println("update:", user)
+	_, err := govalidator.ValidateStruct(user)
+	if err != nil {
+		fmt.Println(err)
+		c.JSON(200, gin.H{
+			"message": "修改参数不匹配",
+		})
+	} else {
+		models.UpdateUser(user) //推入数据库中
+		c.JSON(200, gin.H{
+			"message": "修改用户成功",
+		})
+	}
 }

@@ -533,7 +533,7 @@ Router/app.go
 r.GET("/user/deleteUser", service.DeleteUser)
 ```
 
--4.修改用户
+#### -4.修改用户
 
 userService.go
 
@@ -606,3 +606,31 @@ func Router() *gin.Engine {
 
 ```
 
+#### -5.完成用户模块基本的功能
+
+加入修改电话号码和邮箱并校验
+
+先引入
+
+```go
+go get github.com/asaskevich/govalidator
+结构体字段后加入校验规则
+Phone         string `valid:"matches(^1[3-9]{1}\\d{9}$)"`
+	Email         string `valid:"email"`
+最后service 
+如：
+_, err := govalidator.ValidateStruct(user)
+	if err != nil {
+		fmt.Println(err)
+		c.JSON(200, gin.H{
+			"message": "修改参数不匹配",
+		})
+	} else {
+		models.UpdateUser(user) //推入数据库中
+		c.JSON(200, gin.H{
+			"message": "修改用户成功",
+		})
+	}
+```
+
+学完36集
