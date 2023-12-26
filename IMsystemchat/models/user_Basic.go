@@ -15,6 +15,7 @@ type UserBasic struct {
 	Identity      string
 	ClientIp      string
 	ClientPort    string
+	Salt          string
 	LoginTime     uint64
 	HeartbeatTime uint64
 	LoginOutTime  uint64 `gorm:"column:login_out_time" json:"login_out_time"`
@@ -34,6 +35,31 @@ func GetUserList() []*UserBasic {
 		fmt.Println(v)
 	}
 	return data
+}
+
+func FindUserByNameAndPwd(name string, password string) UserBasic {
+	user := UserBasic{}
+	utils.DB.Where("name =? and pass_word=?", name, password).First(&user)
+	return user
+}
+
+// 通过名字查找对象
+func FindUserByName(name string) UserBasic {
+	user := UserBasic{}
+	utils.DB.Where("name =?", name).First(&user)
+	return user
+}
+
+// 通过电话查找对象
+func FindUserByPhone(phone string) *gorm.DB {
+	user := UserBasic{}
+	return utils.DB.Where("phone =?", phone).First(&user)
+}
+
+// 通过email查找对象
+func FindUserByEmail(email string) *gorm.DB {
+	user := UserBasic{}
+	return utils.DB.Where("email =?", email).First(&user)
 }
 
 // 创建user

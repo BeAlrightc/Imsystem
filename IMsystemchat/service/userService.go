@@ -2,9 +2,11 @@ package service
 
 import (
 	"IMsystemchat/models"
+	"IMsystemchat/utils"
 	"fmt"
 	"github.com/asaskevich/govalidator"
 	"github.com/gin-gonic/gin"
+	"math/rand"
 	"net/http"
 	"strconv"
 )
@@ -36,6 +38,16 @@ func CreateUser(c *gin.Context) {
 	user.Name = c.Query("name")
 	password := c.Query("password")
 	repassword := c.Query("repassword")
+
+	salt := fmt.Sprintf("%06d", rand.Int31())
+
+	data := models.FindUserByName(user.Name)
+	if data.Name != "" {
+		c.JSON(-1, gin.H{
+			"message": "用户名已注册！",
+		})
+		return
+	}
 	if password != repassword {
 		c.JSON(-1, gin.H{
 			"message": "两次密码不一致！",
@@ -43,10 +55,47 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 	//将密码给user对象
-	user.PassWord = password
+	//user.PassWord = password
+	user.PassWord = utils.MakePassword(password, salt)
+	user.Salt = salt
+
 	models.CreateUser(user) //推入数据库中
 	c.JSON(200, gin.H{
 		"message": "新增用户成功",
+	})
+}
+
+// FindUserByNameAndPwd
+// @Summary 登录用户
+// @Tags 首页
+// @param name query string false "用户名"
+// @param password query string false "密码"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/findUserByNameAndPwd [post]
+func FindUserByNameAndPwd(c *gin.Context) {
+	data := models.UserBasic{}
+	name := c.Query("name")
+	password := c.Query("password")
+	user := models.FindUserByName(name)
+	if user.Name == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "该用户不存在",
+		})
+		return
+	}
+	fmt.Println(user)
+	flag := utils.ValidPassword(password, user.Salt, user.PassWord)
+	if !flag {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "密码不正确",
+		})
+		return
+	}
+	pwd := utils.MakePassword(password, user.Salt)
+
+	data = models.FindUserByNameAndPwd(name, pwd)
+	c.JSON(http.StatusOK, gin.H{
+		"message": data,
 	})
 }
 

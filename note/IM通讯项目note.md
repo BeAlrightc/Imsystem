@@ -606,7 +606,7 @@ func Router() *gin.Engine {
 
 ```
 
-#### -5.完成用户模块基本的功能
+#### -5.对电话和email进行校验操作
 
 加入修改电话号码和邮箱并校验
 
@@ -633,4 +633,187 @@ _, err := govalidator.ValidateStruct(user)
 	}
 ```
 
-学完36集
+#### -6.重复注册的校验
+
+```go
+models/user_basic.go
+// 通过名字查找对象
+func FindUserByName(name string) UserBasic {
+	user := UserBasic{}
+	utils.DB.Where("name =?", name).First(&user)
+	return user
+}
+
+// 通过电话查找对象
+func FindUserByPhone(phone string) *gorm.DB {
+	user := UserBasic{}
+	return utils.DB.Where("phone =?", phone).First(&user)
+}
+
+// 通过email查找对象
+func FindUserByEmail(email string) *gorm.DB {
+	user := UserBasic{}
+	return utils.DB.Where("email =?", email).First(&user)
+}
+
+
+再去service/UserService.go修改Create的功能
+
+// CreateUser
+// @Summary 新增用户
+// @Tags 用户模块
+// @param name query string false "用户名"
+// @param password query string false "密码"
+// @param repassword query string false "确认密码"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/createUser [get]
+func CreateUser(c *gin.Context) {
+	//拿到数据
+	user := models.UserBasic{}
+	user.Name = c.Query("name")
+	password := c.Query("password")
+	repassword := c.Query("repassword")
+
+	salt := fmt.Sprintf("%06d", rand.Int31())
+
+	data := models.FindUserByName(user.Name)
+	if data.Name != "" {
+		c.JSON(-1, gin.H{
+			"message": "用户名已注册！",
+		})
+		return
+}
+```
+
+加密操作
+
+```go
+1.封装md5的工具类
+md5.go
+package utils
+
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"strings"
+)
+
+// 小写
+func Md5Encode(data string) string {
+	h := md5.New()
+	h.Write([]byte(data))
+	tempStr := h.Sum(nil)
+	return hex.EncodeToString(tempStr)
+}
+
+// 大写
+func MD5Encode(data string) string {
+	return strings.ToUpper(Md5Encode(data))
+}
+
+// 随机数加密操作
+func MakePassword(plainpwd, salt string) string {
+	return Md5Encode(plainpwd + salt)
+}
+
+// 解密
+func ValidPassword(plainpwd, salt string, password string) bool {
+	md := Md5Encode(plainpwd + salt)
+	fmt.Println(md + "         " + password)
+	return md == password
+}
+写好工具类之后，在userService的creater用起来
+// CreateUser
+// @Summary 新增用户
+// @Tags 用户模块
+// @param name query string false "用户名"
+// @param password query string false "密码"
+// @param repassword query string false "确认密码"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/createUser [get]
+func CreateUser(c *gin.Context) {
+	//拿到数据
+	user := models.UserBasic{}
+	user.Name = c.Query("name")
+	password := c.Query("password")
+	repassword := c.Query("repassword")
+//在这里开始写入加密操作
+	salt := fmt.Sprintf("%06d", rand.Int31())
+
+	data := models.FindUserByName(user.Name)
+	if data.Name != "" {
+		c.JSON(-1, gin.H{
+			"message": "用户名已注册！",
+		})
+		return
+	}
+	if password != repassword {
+		c.JSON(-1, gin.H{
+			"message": "两次密码不一致！",
+		})
+		return
+	}
+	//将密码给user对象
+	//user.PassWord = password
+	user.PassWord = utils.MakePassword(password, salt)
+	user.Salt = salt
+
+	models.CreateUser(user) //推入数据库中
+	c.JSON(200, gin.H{
+		"message": "新增用户成功",
+	})
+}
+```
+
+#### -7.登录（解密）操作
+
+```go
+user_basic.go
+
+func FindUserByNameAndPwd(name string, password string) UserBasic {
+	user := UserBasic{}
+	utils.DB.Where("name =? and pass_word=?", name, password).First(&user)
+	return user
+}
+
+
+userService.go
+
+// FindUserByNameAndPwd
+// @Summary 登录用户
+// @Tags 首页
+// @param name query string false "用户名"
+// @param password query string false "密码"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/findUserByNameAndPwd [post]
+func FindUserByNameAndPwd(c *gin.Context) {
+	data := models.UserBasic{}
+	name := c.Query("name")
+	password := c.Query("password")
+	user := models.FindUserByName(name)
+    //判断用户是否存在
+	if user.Name == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "该用户不存在",
+		})
+		return
+	}
+	fmt.Println(user)
+	flag := utils.ValidPassword(password, user.Salt, user.PassWord)
+	if !flag {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "密码不正确",
+		})
+		return
+	}
+	pwd := utils.MakePassword(password, user.Salt)
+
+	data = models.FindUserByNameAndPwd(name, pwd)
+	c.JSON(http.StatusOK, gin.H{
+		"message": data,
+	})
+}
+```
+
+看完第39集了，接下来看第40集了
