@@ -840,7 +840,7 @@ c.JSON(http.StatusOK, gin.H{
 		})
 ```
 
-6.加入redis
+### 6.加入redis
 
 导入redis
 
