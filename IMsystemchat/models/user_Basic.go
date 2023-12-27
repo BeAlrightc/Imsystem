@@ -4,6 +4,7 @@ import (
 	"IMsystemchat/utils"
 	"fmt"
 	"gorm.io/gorm"
+	"time"
 )
 
 type UserBasic struct {
@@ -37,6 +38,7 @@ func GetUserList() []*UserBasic {
 	return data
 }
 
+// 登录操作
 func FindUserByNameAndPwd(name string, password string) UserBasic {
 	user := UserBasic{}
 	utils.DB.Where("name =? and pass_word=?", name, password).First(&user)
@@ -47,6 +49,11 @@ func FindUserByNameAndPwd(name string, password string) UserBasic {
 func FindUserByName(name string) UserBasic {
 	user := UserBasic{}
 	utils.DB.Where("name =?", name).First(&user)
+
+	//token加密
+	str := fmt.Sprintf("%d", time.Now().Unix())
+	temp := utils.MD5Encode(str)
+	utils.DB.Model(&user).Where("id =?", user.ID).Update("Identity", temp)
 	return user
 }
 
