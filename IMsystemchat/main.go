@@ -10,6 +10,8 @@ func main() {
 	utils.InitConfig()
 	//初始化数据操作
 	utils.InitMYSQL()
+	//初始化redis
+	utils.InitRedis()
 	r := router.Router()
 	r.Run(":8081")
 }

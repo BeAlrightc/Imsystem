@@ -816,4 +816,69 @@ func FindUserByNameAndPwd(c *gin.Context) {
 }
 ```
 
-看完第39集了，接下来看第40集了
+#### -8.token的加入对返回的结构做了调整
+
+models/user_Basic.go
+
+```go
+// 通过名字查找对象
+func FindUserByName(name string) UserBasic {
+	user := UserBasic{}
+	utils.DB.Where("name =?", name).First(&user)
+
+	//token加密
+	str := fmt.Sprintf("%d", time.Now().Unix())
+	temp := utils.MD5Encode(str)
+	utils.DB.Model(&user).Where("id =?", user.ID).Update("Identity", temp)
+	return user
+}
+//返回的结果
+c.JSON(http.StatusOK, gin.H{
+			"code":    -1, //0成功 -1失败
+			"message": "密码不正确",
+			"data":    data,
+		})
+```
+
+6.加入redis
+
+导入redis
+
+```go
+1.载入相关的redis包
+go get  github.com/garyburd/redigo/redis
+go get github.com/go-redis/redis
+
+2.在main()调用
+utils.InitRedis()
+
+3.在config/appyml下对redis进行配置
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  DB: 0
+  poolSize: 30
+  minIdleConn: 30
+4.system_init.go完善InitRedis()方法
+func InitRedis() {
+
+	//数据库连接
+	Red = redis.NewClient(&redis.Options{
+		Addr:         viper.GetString("redis.addr"),
+		Password:     viper.GetString("redis.password"),
+		DB:           viper.GetInt("redis.DB"),
+		PoolSize:     viper.GetInt("redis.poolSize"),
+		MinIdleConns: viper.GetInt("redis.minIdleConn"),
+	})
+	pong, err := Red.Ping().Result()
+	if err != nil {
+		fmt.Println("init redis .....", err)
+	} else {
+		fmt.Println("Redis inited ......", pong)
+	}
+
+}
+```
+
+做完41集了，接下来看42集
+

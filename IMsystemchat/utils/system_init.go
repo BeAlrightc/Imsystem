@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"github.com/go-redis/redis"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -11,7 +12,10 @@ import (
 	"time"
 )
 
-var DB *gorm.DB
+var (
+	DB  *gorm.DB
+	Red *redis.Client
+)
 
 // 初始化配置文件操作
 func InitConfig() {
@@ -43,4 +47,23 @@ func InitMYSQL() {
 	//DB.Find(&user)
 	//fmt.Println(user)
 	//看完了swagger的整合操作
+}
+
+func InitRedis() {
+
+	//数据库连接
+	Red = redis.NewClient(&redis.Options{
+		Addr:         viper.GetString("redis.addr"),
+		Password:     viper.GetString("redis.password"),
+		DB:           viper.GetInt("redis.DB"),
+		PoolSize:     viper.GetInt("redis.poolSize"),
+		MinIdleConns: viper.GetInt("redis.minIdleConn"),
+	})
+	pong, err := Red.Ping().Result()
+	if err != nil {
+		fmt.Println("init redis .....", err)
+	} else {
+		fmt.Println("Redis inited ......", pong)
+	}
+
 }
