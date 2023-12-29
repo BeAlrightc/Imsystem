@@ -1037,4 +1037,85 @@ func MsgHander(ws *websocket.Conn, c *gin.Context) {
 
 ![](D:\myfile\GO\project\IMsystem\note\pic\websockettest2.jpg)
 
-看完42集看43集了
+8.设计关系表、群信息表、消息表
+
+message.go
+
+```go
+package models
+
+import (
+	"gorm.io/gorm"
+)
+
+// 消息
+type Message struct {
+	gorm.Model
+	FormId   uint   //发送者
+	TargetId uint   //消息的接收者
+	Type     string // 消息类型 群聊，私聊，广播
+	Media    int    //消息类型 文字 图片 音频
+	Content  string //消息内容
+	Pic      string
+	Url      string
+	Desc     string
+	Amount   int //其他的数字统计
+
+}
+
+func (table *Message) TableName() string {
+	return "message"
+}
+
+```
+
+group_basic.go
+
+```go
+package models
+
+import (
+	"gorm.io/gorm"
+)
+
+// 群信息
+type GroupBasic struct {
+	gorm.Model
+	Name    string
+	OwnerId uint
+	Icon    string
+	Type    int
+	Desc    string
+}
+
+func (table *GroupBasic) TableName() string {
+	return "group_basic"
+}
+
+```
+
+contact.go
+
+```go
+package models
+
+import (
+	"gorm.io/gorm"
+)
+
+// 人员关系
+type Contact struct {
+	gorm.Model
+	OwnerId  uint //谁的关系信息
+	TargetId uint //对应的谁
+	Type     int  //对应的类型 0 1
+	Desc     string
+}
+
+func (table *Contact) TableName() string {
+	return "contact"
+}
+
+```
+
+看完43集接下来看44集了

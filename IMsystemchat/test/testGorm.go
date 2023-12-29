@@ -1,4 +1,4 @@
-package mains
+package main
 
 import (
 	"IMsystemchat/models"
@@ -14,8 +14,11 @@ func main() {
 		panic("failed to connnect database")
 	}
 
-	//迁移schema
-	db.AutoMigrate(&models.UserBasic{})
+	//迁移schema 就是根据相关的结狗提生成相应的mysql数据表操作
+	//db.AutoMigrate(&models.UserBasic{})
+	//db.AutoMigrate(&models.Message{})
+	db.AutoMigrate(&models.Contact{})
+	db.AutoMigrate(&models.GroupBasic{})
 
 	//create
 	//user := &models.UserBasic{}
