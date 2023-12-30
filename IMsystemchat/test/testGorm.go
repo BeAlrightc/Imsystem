@@ -1,4 +1,4 @@
-package main
+package mains
 
 import (
 	"IMsystemchat/models"
@@ -16,9 +16,9 @@ func main() {
 
 	//迁移schema 就是根据相关的结狗提生成相应的mysql数据表操作
 	//db.AutoMigrate(&models.UserBasic{})
-	//db.AutoMigrate(&models.Message{})
-	db.AutoMigrate(&models.Contact{})
-	db.AutoMigrate(&models.GroupBasic{})
+	db.AutoMigrate(&models.Message{})
+	//db.AutoMigrate(&models.Contact{})
+	//db.AutoMigrate(&models.GroupBasic{})
 
 	//create
 	//user := &models.UserBasic{}

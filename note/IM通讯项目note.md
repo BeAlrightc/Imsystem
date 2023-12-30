@@ -406,7 +406,9 @@ func InitMYSQL() {
 
 ```
 
-### 5.完成用户模块基本的功能
+# 四.完成用户模块基本的功能
+
+### 1.CRUD
 
 #### -1.显示所有用户
 
@@ -840,7 +842,7 @@ c.JSON(http.StatusOK, gin.H{
 		})
 ```
 
-### 6.加入redis
+### 2.加入redis
 
 导入redis
 
@@ -880,7 +882,7 @@ func InitRedis() {
 }
 ```
 
-### 7.通过websocket连通
+### 3.通过websocket连通
 
 ```go
 1.下载包 go get github.com/gorilla/websocket
@@ -1037,7 +1039,7 @@ func MsgHander(ws *websocket.Conn, c *gin.Context) {
 
 ![](D:\myfile\GO\project\IMsystem\note\pic\websockettest2.jpg)
 
-8.设计关系表、群信息表、消息表
+### 4.设计关系表、群信息表、消息表
 
 message.go
 
@@ -1117,5 +1119,21 @@ func (table *Contact) TableName() string {
 }
 
 ```
+
+5.消息传递
+
+发送消息
+
+​	需要：发送者ID,接收者ID，消息类型，发送的内容，发送类型
+
+​    校验Token，关系
+
+接收消息
+
+
+
+
+
+
 
 看完43集接下来看44集了
