@@ -1120,7 +1120,7 @@ func (table *Contact) TableName() string {
 
 ```
 
-5.消息传递
+### 5.消息传递
 
 发送消息
 
@@ -1129,6 +1129,822 @@ func (table *Contact) TableName() string {
 ​    校验Token，关系
 
 接收消息
+
+message.go
+
+```go
+package models
+
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/gorilla/websocket"
+	"gopkg.in/fatih/set.v0"
+	"gorm.io/gorm"
+	"net"
+	"net/http"
+	"strconv"
+	"sync"
+)
+
+// 消息
+type Message struct {
+	gorm.Model
+	FormId   int64  //发送者
+	TargetId int64  //消息的接收者
+	Type     int    // 发送类型 群聊，私聊，广播
+	Media    int    //消息类型 文字 图片 音频
+	Content  string //消息内容
+	Pic      string
+	Url      string
+	Desc     string
+	Amount   int //其他的数字统计
+
+}
+
+func (table *Message) TableName() string {
+	return "message"
+}
+
+type Node struct {
+	Conn      *websocket.Conn
+	DataQueue chan []byte
+	GroupSets set.Interface // go get gopkg.in/fatih/set.v0
+}
+
+// 映射关系
+var clientMap map[int64]*Node = make(map[int64]*Node, 0)
+
+// 读写锁
+var rwLocker sync.RWMutex
+
+func Chat(writer http.ResponseWriter, request *http.Request) {
+	//1.获取参数并校验token等合法性
+	//token :=query.Get("token")
+	query := request.URL.Query()
+	Id := query.Get("userId")
+	userId, _ := strconv.ParseInt(Id, 10, 64)
+	//msgType :=query.Get("type")
+	//targetId :=query.Get("targetId")
+	//context :=query.Get("context")
+	isvalida := true //check token() 待。。。。。
+	conn, err := (&websocket.Upgrader{
+		//token校验
+		CheckOrigin: func(r *http.Request) bool {
+			return isvalida
+		},
+	}).Upgrade(writer, request, nil)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	//2.获取连接Conn
+	node := &Node{
+		Conn:      conn,
+		DataQueue: make(chan []byte, 50),
+		GroupSets: set.New(set.ThreadSafe),
+	}
+	//3.用户关系
+	//4.userid 跟node绑定 并加锁
+	rwLocker.Lock()
+	clientMap[userId] = node
+	rwLocker.Unlock()
+	//5.完成发送的逻辑
+	go sendProc(node)
+	//6.完成接收的逻辑
+	go recevProc(node)
+	sendMsg(userId, []byte("欢迎进入聊天系统"))
+}
+
+func sendProc(node *Node) {
+	for {
+		select {
+		case data := <-node.DataQueue:
+			err := node.Conn.WriteMessage(websocket.TextMessage, data)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+		}
+	}
+}
+
+func recevProc(node *Node) {
+	for {
+		_, data, err := node.Conn.ReadMessage()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		broadMsg(data)
+		fmt.Println("[ws] <<<<<<", data)
+	}
+}
+
+var udpsendChan chan []byte = make(chan []byte, 024)
+
+func broadMsg(data []byte) {
+	udpsendChan <- data
+}
+
+func init() {
+	go udpSendProc()
+	go udpRecvProc()
+}
+
+// 完成udp数据发送协程
+func udpSendProc() {
+	con, err := net.DialUDP("udp", nil, &net.UDPAddr{
+		IP:   net.IPv4(192, 168, 0, 255),
+		Port: 3000,
+	})
+	defer con.Close()
+	if err != nil {
+		fmt.Println(err)
+	}
+	for {
+		select {
+		case data := <-udpsendChan:
+			_, err := con.Write(data)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+		}
+	}
+}
+
+// 完成udp数据接收协程
+func udpRecvProc() {
+	con, err := net.ListenUDP("udp", &net.UDPAddr{
+		IP:   net.IPv4zero,
+		Port: 3000,
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer con.Close()
+	for {
+		var buf [512]byte
+		n, err := con.Read(buf[0:])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		dispatch(buf[0:n])
+	}
+}
+
+// 后端调度逻辑处理
+func dispatch(data []byte) {
+	msg := Message{}
+	err := json.Unmarshal(data, &msg)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	switch msg.Type {
+	case 1: //私信
+		sendMsg(msg.TargetId, data)
+		//case 2:
+		//	sendGroupMsg() //群发
+		//case 3:
+		//	sendAllMsg() //广播
+		//case 4:
+
+	}
+}
+func sendMsg(userId int64, msg []byte) {
+	rwLocker.RLock()
+	node, ok := clientMap[userId]
+	rwLocker.RUnlock()
+	if ok {
+		node.DataQueue <- msg
+	}
+}
+
+```
+
+### 6.集成html和前端页面
+
+service/index
+
+```go
+package service
+
+import (
+	"fmt"
+	"github.com/gin-gonic/gin"
+	"html/template"
+)
+
+// GetIndex
+// @Tags 首页
+// @Success 200 {string} welcome
+// @Router /index [get]
+func GetIndex(c *gin.Context) {
+	ind, err := template.ParseFiles("index.html", "views/chat/head.html")
+	fmt.Println("进来了")
+	if err != nil {
+		panic(err)
+	}
+	ind.Execute(c.Writer, "index")
+	//c.JSON(http.StatusOK, gin.H{
+	//	"message": "welcome !!",
+	//})
+}
+
+// 跳转到注册页面进行注册操作
+func ToRegister(c *gin.Context) {
+	ind, err := template.ParseFiles("views/user/register.html")
+	fmt.Println("进来了")
+	if err != nil {
+		panic(err)
+	}
+	ind.Execute(c.Writer, "register")
+}
+
+```
+
+
+
+router/app.go引入静态资源
+
+```go
+//静态资源
+	r.Static("/asset", "asset/")
+	r.LoadHTMLGlob("views/**/*")
+//首页相关的
+	r.GET("/", service.GetIndex)
+	r.GET("/index", service.GetIndex)
+	r.GET("/toRegister", service.ToRegister)
+```
+
+service/userService.go
+
+```go
+// CreateUser
+// @Summary 新增用户
+// @Tags 用户模块
+// @param name query string false "用户名"
+// @param password query string false "密码"
+// @param repassword query string false "确认密码"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/createUser [get]
+func CreateUser(c *gin.Context) {
+	//拿到数据
+	user := models.UserBasic{}
+	//user.Name = c.Query("name")
+	//password := c.Query("password")
+	//repassword := c.Query("repassword")
+	user.Name = c.Request.FormValue("name")
+	password := c.Request.FormValue("password")
+	repassword := c.Request.FormValue("Identity")
+	fmt.Println("repassword: ", repassword)
+	fmt.Println(user.Name, ">>>>>", password, repassword)
+	salt := fmt.Sprintf("%06d", rand.Int31())
+
+	data := models.FindUserByName(user.Name)
+	//看数据有没有在前端填写好，没有就返回错误信息
+	if user.Name == "" || password == "" || repassword == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    -1, //0成功 -1失败
+			"message": "用户名或密码不能为空",
+			"data":    user,
+		})
+		return
+	}
+	//当查询到了结果之后
+	if data.Name != "" {
+		c.JSON(200, gin.H{
+			"code":    -1, //  0成功   -1失败
+			"message": "用户名已注册！",
+			"data":    user,
+		})
+		return
+	}
+	//比对两次输入的密码是否正确
+	if password != repassword {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    -1, //0成功 -1失败
+			"message": "两次密码不一致",
+			"data":    user,
+		})
+		return
+	}
+	//将密码给user对象
+	//user.PassWord = password
+	user.PassWord = utils.MakePassword(password, salt)
+	user.Salt = salt
+	fmt.Println(user.PassWord)
+	models.CreateUser(user) //推入数据库中
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0, //0成功 -1失败
+		"message": "新增用户成功",
+		"data":    user,
+	})
+}
+
+// FindUserByNameAndPwd
+// @Summary 登录用户
+// @Tags 首页
+// @param name query string false "用户名"
+// @param password query string false "密码"
+// @Success 200 {string} json{"code","message"}
+// @Router /user/findUserByNameAndPwd [post]
+func FindUserByNameAndPwd(c *gin.Context) {
+	data := models.UserBasic{}
+	//name := c.Query("name")
+	//password := c.Query("password")
+	name := c.Request.FormValue("name")
+	password := c.Request.FormValue("password")
+	fmt.Println(name, password)
+	user := models.FindUserByName(name)
+	if user.Name == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    -1, //0成功 -1失败
+			"message": "该用户不存在",
+			"data":    data,
+		})
+		return
+	}
+	fmt.Println(user)
+	flag := utils.ValidPassword(password, user.Salt, user.PassWord)
+	if !flag {
+		c.JSON(http.StatusOK, gin.H{
+			"code":    -1, //0成功 -1失败
+			"message": "密码不正确",
+			"data":    data,
+		})
+		return
+	}
+	pwd := utils.MakePassword(password, user.Salt)
+
+	data = models.FindUserByNameAndPwd(name, pwd)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0, //0成功 -1失败
+		"message": "登录成功",
+		"data":    data,
+	})
+}
+
+```
+
+head.html
+
+```html
+{{define "/chat/head.shtml"}}
+<script>
+    function userId(id){
+        if(typeof  id =="undefined"){
+            var r = sessionStorage.getItem("userid");
+            if(!r){
+                return 0;
+            }else{
+                return parseInt(r)
+            }
+        }else{
+            sessionStorage.setItem("userid",id);
+        }
+    }
+    function userInfo(o){
+        if(typeof  o =="undefined"){
+            var r = sessionStorage.getItem("userinfo");
+            if(!!r){
+                return JSON.parse(r);
+            }else{
+                return null
+            }
+        }else{
+            sessionStorage.setItem("userinfo",JSON.stringify(o));
+        }
+    }
+    var url = location.href;
+    var isOpen = url.indexOf("/login")>-1 || url.indexOf("/register")>-1
+    if (!userId() && !isOpen){
+      // location.href = "login.shtml";
+    }
+
+</script>
+
+    <!--聊天所需-->
+<meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>IM解决方案</title>
+<meta name="Description" content="马士兵教育IM通信系统">
+<meta name="Keywords" content="无人售货机，小程序，推送，群聊,单聊app">
+<link rel="stylesheet" href="/asset/plugins/mui/css/mui.css" />
+<link rel="stylesheet" href="/asset/css/chat.css" />
+<link rel="stylesheet" href="/asset/css/audio.css" />
+<!--登录所需 -->
+<link rel="stylesheet" href="/asset/css/login.css" />
+<link rel="stylesheet" href="/asset/iconfont/iconfont.css" />
+<link rel="icon" href="asset/images/favicon.ico" type="image/x-icon"/>  
+<script src="/asset/plugins/mui/js/mui.js" ></script>
+<script src="/asset/js/vue.min.js" ></script>
+<script src="/asset/js/vue-resource.min.js" ></script>
+<script src="/asset/js/util.js" ></script>
+<script>
+   function post(uri,data,fn){
+                var xhr = new XMLHttpRequest();
+                xhr.open("POST","//"+location.host+"/"+uri, true);
+                // 添加http头，发送信息至服务器时内容编码类型
+                xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState == 4 && (xhr.status == 200 || xhr.status == 304)) {
+                        fn.call(this, JSON.parse(xhr.responseText));
+                    }
+                };
+                var _data=[];
+                if(!! userId()){
+                   // data["userid"] = userId();
+                }
+                for(var i in data){
+                    _data.push( i +"=" + encodeURI(data[i]));
+                }
+                xhr.send(_data.join("&"));
+            }
+            function uploadfile(uri,dom,fn){
+                var xhr = new XMLHttpRequest();
+                xhr.open("POST","//"+location.host+"/"+uri, true);
+                // 添加http头，发送信息至服务器时内容编码类型
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState == 4 && (xhr.status == 200 || xhr.status == 304)) {
+                        fn.call(this, JSON.parse(xhr.responseText));
+                    }
+                };
+                var _data=[];
+                var formdata = new FormData();
+                if(!! userId()){
+                    formdata.append("userid",userId());
+                }
+                formdata.append("file",dom.files[0])
+                xhr.send(formdata);
+            }
+   function uploadblob(uri,blob,filetype,fn){
+       var xhr = new XMLHttpRequest();
+       xhr.open("POST","//"+location.host+"/"+uri, true);
+       // 添加http头，发送信息至服务器时内容编码类型
+       xhr.onreadystatechange = function() {
+           if (xhr.readyState == 4 && (xhr.status == 200 || xhr.status == 304)) {
+               fn.call(this, JSON.parse(xhr.responseText));
+           }
+       };
+       var _data=[];
+       var formdata = new FormData();
+       formdata.append("filetype",filetype);
+       if(!! userId()){
+           formdata.append("userid",userId());
+       }
+       formdata.append("file",blob)
+       xhr.send(formdata);
+   }
+       function uploadaudio(uri,blob,fn){
+                uploadblob(uri,blob,".mp3",fn)
+        }
+       function uploadvideo(uri,blob,fn){
+           uploadblob(uri,blob,".mp4",fn)
+       }
+</script>
+
+<style>
+    .flex-container{
+        display:flex;
+        flex-direction:row;
+        width:100%;
+        padding-top: 10px;
+        position: fixed;
+        bottom: 0px;
+        background-color: #FFFFFF;
+    }
+    .item-1{
+        height:50px;
+        height:50px;
+        padding: 5px 5px 5px 5px;
+    }
+    .item-2{
+                margin-right:auto;
+        height:50px;
+        width: 100%;
+    }
+    .txt{
+        margin-right:auto;
+    }
+    .item-3{
+        height:50px;
+        height:50px;
+        padding: 5px 5px 5px 5px;
+    }
+    .item-4{
+        height:50px;
+        height:50px;
+        padding: 5px 5px 5px 5px;
+    }
+
+     li.chat{
+         justify-content: flex-start;
+         align-items: flex-start;
+         display: flex;
+
+     }
+     .chat.other{
+         flex-direction: row;
+     }
+    .chat.mine{
+        flex-direction: row-reverse;
+    }
+    img.avatar{
+        width: 54px;
+        height: 54px;
+    }
+    .other .avatar{
+        margin-left:10px;
+    }
+    .mine .avatar{
+        margin-right:10px;
+    }
+    .other span{
+        display: none;
+        border: 10px solid;
+        border-color: transparent #FFFFFF transparent transparent ;
+        margin-top: 10px;
+    }
+    .mine span{
+        display: none;
+        border: 10px solid;
+        border-color: transparent  transparent transparent #32CD32;
+        margin-top: 10px;
+    }
+    .other>.content{
+        background-color: #FFFFFF;
+
+    }
+    .mine>.content{
+        background-color: #e3eafa;
+
+    }
+    div.content{
+        min-width: 60px;
+        clear: both;
+        display: inline-block;
+        padding: 16px 16px 16px 10px;
+        margin: 0 0 20px 0;
+        font: 16px/20px 'Noto Sans', sans-serif;
+        border-radius: 10px;
+
+        min-height: 54px;
+    }
+    .content>img.pic{
+        width: 100%;
+        margin:3px 3px 3px 3px;
+    }
+    .content>img.audio{
+        width: 32px;
+        color: white;
+    }
+    #panels{
+        background-color: #FFFFFF;
+        display: flex;
+        position: fixed;
+        bottom: 50px;
+    }
+    .doutures{
+        flex-direction: row;
+        flex-wrap: wrap;
+        display: flex;
+    }
+    .doutures img{
+        margin: 10px 10px 10px 10px;
+    }
+    .doutupkg{
+        flex-direction: row;
+        flex-wrap: wrap;
+        display: flex;
+    }
+    .plugins{
+        flex-direction: row;
+        flex-wrap: wrap;
+        display: flex;
+    }
+    .plugin{
+        padding: 10px 10px 10px 20px;
+        margin-left: 10px;
+        margin-right: 10px;
+    }
+    .plugin img{
+        width: 40px;
+    }
+    .plugin p{
+        text-align: center;
+        font-size: 16px;
+    }
+    .doutupkg img{
+        width: 32px;
+        height: 32px;
+        margin: 5px 5px 5px 5px;
+    }
+    .upload{
+        width: 64px;
+        height: 64px;
+        position: absolute;
+        top: 1px;
+        opacity:0;
+    }
+    .tagicon{
+        width: 32px;
+        height:32px;
+    }
+    
+    .small{
+        width: 32px;
+        height:32px;
+    }
+    .middle{
+        width: 64px;
+        height:64px;
+    }
+    .large{
+        width: 96px;
+        height:96px;
+    }
+    .res image{
+        width: 32px;
+        height:32px;
+    }
+    .mui-content {
+                padding-top: 44px;
+                position: absolute;
+                left: 0;
+                top: 0;
+                background: #fff;
+                width: 100%;
+                height: 100%;
+        }
+</style>
+{{end}}
+```
+
+
+
+index.html
+
+```html
+<!DOCTYPE html>
+<html>
+
+<head>
+    <!--js include-->
+    {{template "/chat/head.shtml"}}
+<!--    <title>够浪</title>-->
+<!--    <link rel="stylesheet" href="/asset/plugins/mui/css/mui.css"/>-->
+<!--    <link rel="stylesheet" href="/asset/css/login.css"/>-->
+<!--    <script src="/asset/plugins/mui/js/mui.js"></script>-->
+<!--    <script src="/asset/js/vue.min.js"></script>-->
+<!--    <script src="/asset/js/util.js"></script>-->
+</head>
+<body>
+<p>进入登录</p>
+<header class="mui-bar mui-bar-nav">
+    <h1 class="mui-title">登录</h1>
+</header>
+{{.}}
+<div class="mui-content login-page" id="pageapp">
+    <form id='login-form' class="mui-input-group login-from">
+        <div class="mui-input-row">
+            <input v-model="user.name" placeholder="请你输入用户名" type="text" class="mui-input-clear mui-input" >
+        </div>
+        <div class="mui-input-row">
+            <input v-model="user.password" placeholder="请你输入密码"  type="password" class="mui-input-clear mui-input" >
+        </div>
+    </form>
+    <div class="mui-content-padded">
+        <button @click="login"  type="button"  class="mui-btn mui-btn-block mui-btn-primary btn-login">登录</button>
+        <div class="link-area"><a id='reg' href="toRegister">注册账号</a> <span class="spliter">|</span> <a  id='forgetPassword'>忘记密码</a>
+        </div>
+    </div>
+    <div class="mui-content-padded oauth-area">
+    </div>
+</div>
+</body>
+</html>
+<script>
+    var app = new Vue({
+        el:"#pageapp",
+        data:function(){
+          return {
+              user:{
+                name:"",
+                password:"",
+              }
+          }
+        },
+        methods:{
+            login:function(){
+                //检测手机号是否正确
+                console.log("login")
+                //检测密码是否为空
+
+                //网络请求
+                //封装了promis
+                util.post("user/findUserByNameAndPwd",this.user).then(res=>{
+                    console.log(res)
+                    if(res.code!=0){
+                        mui.toast(res.message)
+                    }else{         
+                        var url = "/toChat?userId="+res.data.ID+"&token="+res.data.Identity
+                        userInfo(res.data)
+                        userId(res.data.ID)
+                        mui.toast("登录成功,即将跳转")
+                        location.href = url
+                    }
+                })
+            },
+        }
+    })
+</script>
+```
+
+register.html
+
+```html
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1,maximum-scale=1,user-scalable=no">
+    <title>IM解决方案</title>
+    <link rel="stylesheet" href="/asset/plugins/mui/css/mui.css" />
+    <link rel="stylesheet" href="/asset/css/login.css" />
+    <link rel="icon" href="asset/images/favicon.ico" type="image/x-icon" />
+    <script src="/asset/plugins/mui/js/mui.js"></script>
+    <script src="/asset/js/vue.min.js"></script>
+    <script src="/asset/js/util.js"></script>
+</head>
+
+<body>
+
+    <header class="mui-bar mui-bar-nav">
+        <h1 class="mui-title">注册</h1>
+    </header>
+    <div class="mui-content register-page" id="pageapp">
+        <form id='login-form' class="mui-input-group register-form">
+            <div class="mui-input-row">
+                <input v-model="user.name" placeholder="请输入用户名" type="text" class="mui-input-clear mui-input">
+            </div>
+            <div class="mui-input-row">
+                <input v-model="user.password" placeholder="请输入密码" type="password" class="mui-input-clear mui-input">
+            </div>
+            <div class="mui-input-row">
+                <input v-model="user.Identity" placeholder="再输入密码" type="password" class="mui-input-clear mui-input">
+            </div>
+        </form>
+        <div class="mui-content-padded">
+            <button @click="login" type="button" class="mui-btn mui-btn-block mui-btn-primary btn-register">注册</button>
+            <div class="link-area"><a id='reg' href="/index">登录账号</a> <span class="spliter">|</span> <a
+                    id='forgetPassword'>忘记密码</a>
+            </div>
+        </div>
+        <div class="mui-content-padded oauth-area">
+        </div>
+    </div>
+</body>
+
+</html>
+<script>
+    var app = new Vue({
+        el: "#pageapp",
+        data: function () {
+            return {
+                user: {
+                    name: "",
+                    password: "",
+                    Identity: "",
+                }
+            }
+        },
+        methods: {
+            login: function () {
+                //检测密码是否为空
+                console.log(this.user)
+                //网络请求
+                //封装了promis
+                util.post("/user/createUser", this.user).then(res => {
+                    console.log(res)
+                    if (res.code != 0) {
+                        mui.toast(res.message)
+                    } else {
+                        location.replace("//127.0.0.1:8081/index")
+                       // location.href = "/"
+                        mui.toast("注册成功,即将跳转")
+                    }
+                })
+            },
+        }
+    })
+</script>
+```
 
 
 

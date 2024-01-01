@@ -39,21 +39,36 @@ func GetUserList(c *gin.Context) {
 func CreateUser(c *gin.Context) {
 	//拿到数据
 	user := models.UserBasic{}
-	user.Name = c.Query("name")
-	password := c.Query("password")
-	repassword := c.Query("repassword")
-
+	//user.Name = c.Query("name")
+	//password := c.Query("password")
+	//repassword := c.Query("repassword")
+	user.Name = c.Request.FormValue("name")
+	password := c.Request.FormValue("password")
+	repassword := c.Request.FormValue("Identity")
+	fmt.Println("repassword: ", repassword)
+	fmt.Println(user.Name, ">>>>>", password, repassword)
 	salt := fmt.Sprintf("%06d", rand.Int31())
 
 	data := models.FindUserByName(user.Name)
-	if data.Name != "" {
+	//看数据有没有在前端填写好，没有就返回错误信息
+	if user.Name == "" || password == "" || repassword == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"code":    -1, //0成功 -1失败
-			"message": "用户名已注册",
+			"message": "用户名或密码不能为空",
 			"data":    user,
 		})
 		return
 	}
+	//当查询到了结果之后
+	if data.Name != "" {
+		c.JSON(200, gin.H{
+			"code":    -1, //  0成功   -1失败
+			"message": "用户名已注册！",
+			"data":    user,
+		})
+		return
+	}
+	//比对两次输入的密码是否正确
 	if password != repassword {
 		c.JSON(http.StatusOK, gin.H{
 			"code":    -1, //0成功 -1失败
@@ -66,7 +81,7 @@ func CreateUser(c *gin.Context) {
 	//user.PassWord = password
 	user.PassWord = utils.MakePassword(password, salt)
 	user.Salt = salt
-
+	fmt.Println(user.PassWord)
 	models.CreateUser(user) //推入数据库中
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0, //0成功 -1失败
@@ -84,8 +99,11 @@ func CreateUser(c *gin.Context) {
 // @Router /user/findUserByNameAndPwd [post]
 func FindUserByNameAndPwd(c *gin.Context) {
 	data := models.UserBasic{}
-	name := c.Query("name")
-	password := c.Query("password")
+	//name := c.Query("name")
+	//password := c.Query("password")
+	name := c.Request.FormValue("name")
+	password := c.Request.FormValue("password")
+	fmt.Println(name, password)
 	user := models.FindUserByName(name)
 	if user.Name == "" {
 		c.JSON(http.StatusOK, gin.H{
