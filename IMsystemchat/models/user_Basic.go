@@ -29,6 +29,7 @@ func (table *UserBasic) TableName() string {
 	return "user_basic"
 }
 
+// 拿到所有的用户信息
 func GetUserList() []*UserBasic {
 	data := make([]*UserBasic, 10)
 	utils.DB.Find(&data)

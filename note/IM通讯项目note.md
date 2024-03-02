@@ -1946,10 +1946,144 @@ register.html
 </script>
 ```
 
+### 7.集成聊天页面 完成发送接受消息（文本）
+
+ 1>前端需要拼接Message对象
+
+需要：发送者ID，接收者ID，消息类型1，发送的context
+
+jsonStr=JSON.string(msg)
+
+websocket.send(jsonStr)
 
 
 
+revProc协程读取数据
 
+发送给对应的人
 
+websocket.OnMessage
 
-看完43集接下来看44集了
+集成html
+
+```go
+在app.go加入登录成功后的跳转请求(get)
+r.GET("/toChat", service.ToChat)
+在index.go中的ToChat方法中将这些静态资源页面加入进来，不能漏掉这些静态资源否则就会是一片空白
+func ToChat(c *gin.Context) {
+	ind, err := template.ParseFiles("views/chat/index.html",
+		"views/chat/head.html",
+		"views/chat/foot.html",
+		"views/chat/tabmenu.html",
+		"views/chat/concat.html",
+		"views/chat/group.html",
+		"views/chat/profile.html",
+		"views/chat/createcom.html",
+		"views/chat/userinfo.html",
+		"views/chat/main.html")
+	fmt.Println("进来了 index.html")
+	if err != nil {
+		panic(err)
+	}
+	userId, _ := strconv.Atoi(c.Query("userId"))
+	token := c.Query("token")
+	user := models.UserBasic{}
+	user.ID = uint(userId)
+	user.Identity = token
+	fmt.Println("ToChat>>>>>>", user)
+	ind.Execute(c.Writer, user)
+}
+再取index.html修改
+
+ var url = "/toChat?userId="+res.data.ID+"&token="+res.data.Identity
+                        userInfo(res.data)
+                        userId(res.data.ID)
+                        mui.toast("登录成功,即将跳转")
+                        location.href = url
+```
+
+最后页面可以跳转成功
+
+接下来完成聊天的操作
+
+2>.获取好友列表
+
+在router/app.go添加路由
+
+```go
+r.POST("/searchFriends", service.SerchFriends)
+```
+
+在service/userservice.go加入一个方法
+
+```go
+func SerchFriends(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Request.FormValue("userId"))
+	fmt.Println(">>>>>", id)
+	users := models.SearchFriend(uint(id))
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0, //0成功 -1失败
+		"message": "查询好友列表成功",
+		"data":    users,
+	})
+}
+```
+
+在models/contact.go中也加入相关的方法
+
+```go
+// 查找好友的操作
+func SearchFriend(userId uint) []UserBasic {
+	contacts := make([]Contact, 0)
+	objIds := make([]uint64, 0)
+	fmt.Println("进入SearchFriend")
+	utils.DB.Where("owner_id = ? and type=1", userId).Find(&contacts)
+	for _, v := range contacts {
+		fmt.Println(">>>>>>>>>  ", v)
+		objIds = append(objIds, uint64(v.TargetId))
+	}
+	users := make([]UserBasic, 0)
+	utils.DB.Where("id in ?", objIds).Find(&users)
+	return users
+}
+//可以使用postman进行提交测试返回（使用post请求）
+http://127.0.0.1:8081/searchFriends?userId=3
+
+```
+
+3>对前端页面进行调试操作
+
+主要是对foot.html中的loadFriends进行修改
+
+```html
+ loadfriends: function () {
+                    var that = this;
+                    post("searchFriends", { userId: userId() }, function (res) {
+                        that.friends = res.Rows || [];
+                        var usermap = this.usermap;
+                        for (var i in res.Rows) {
+                            var k = "" + res.Rows[i].ID
+                            usermap[k] = res.Rows[i];
+                        }
+                        this.usermap = usermap;
+                    }.bind(this))
+                },
+```
+
+在后端中将请求的返回改成封装的类型
+
+```go
+func SerchFriends(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Request.FormValue("userId"))
+	fmt.Println(">>>>>", id)
+	users := models.SearchFriend(uint(id))
+	//c.JSON(http.StatusOK, gin.H{
+	//	"code":    0, //0成功 -1失败
+	//	"message": "查询好友列表成功",
+	//	"data":    users,
+	//})
+	utils.RespOkList(c.Writer, users, len(users))
+}
+```
+
+注意：前端所要请求的方法需要以后端的一致,在调试的时候，首先应该在postman进行请求调试然后在前端页面进行页面调试。确保发送正常后调试前端显示

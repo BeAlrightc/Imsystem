@@ -1,5 +1,5 @@
 mysql:
-  dns: root:000000@tcp(127.0.0.1:3306)/ginchat?charset=utf8mb4&parseTime=True
+  dns: root:000000@tcp(127.0.0.1:3306)/ginchats?charset=utf8mb4&parseTime=True
 redis:
   addr: "127.0.0.1:6379"
   password: ""

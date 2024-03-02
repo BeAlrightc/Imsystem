@@ -36,7 +36,7 @@ func GetUserList(c *gin.Context) {
 // @param repassword query string false "确认密码"
 // @Success 200 {string} json{"code","message"}
 // @Router /user/createUser [get]
-func CreateUser(c *gin.Context) {
+func CreateUser(c *gin.Context) { //登录操作
 	//拿到数据
 	user := models.UserBasic{}
 	//user.Name = c.Query("name")
@@ -48,7 +48,7 @@ func CreateUser(c *gin.Context) {
 	fmt.Println("repassword: ", repassword)
 	fmt.Println(user.Name, ">>>>>", password, repassword)
 	salt := fmt.Sprintf("%06d", rand.Int31())
-
+	fmt.Println("进来了!")
 	data := models.FindUserByName(user.Name)
 	//看数据有没有在前端填写好，没有就返回错误信息
 	if user.Name == "" || password == "" || repassword == "" {
@@ -197,7 +197,7 @@ var upGrade = websocket.Upgrader{
 	},
 }
 
-// 发送消息
+// 发送消息的准备工作
 func SendMsg(c *gin.Context) {
 	ws, err := upGrade.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -212,6 +212,8 @@ func SendMsg(c *gin.Context) {
 	}(ws)
 	MsgHander(ws, c)
 }
+
+// 调用发送流程的方法
 func MsgHander(ws *websocket.Conn, c *gin.Context) {
 	for {
 		msg, err := utils.Subscribe(c, utils.PublishKey)
@@ -230,4 +232,16 @@ func MsgHander(ws *websocket.Conn, c *gin.Context) {
 
 func SendUserMsg(c *gin.Context) {
 	models.Chat(c.Writer, c.Request)
+}
+
+func SearchFriends(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Request.FormValue("userId"))
+	fmt.Println(">>>>>", id)
+	users := models.SearchFriend(uint(id))
+	//c.JSON(http.StatusOK, gin.H{
+	//	"code":    0, //0成功 -1失败
+	//	"message": "查询好友列表成功",
+	//	"data":    users,
+	//})
+	utils.RespOkList(c.Writer, users, len(users))
 }

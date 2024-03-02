@@ -17,8 +17,8 @@ type Message struct {
 	gorm.Model
 	FormId   int64  //发送者
 	TargetId int64  //消息的接收者
-	Type     int    // 发送类型 群聊，私聊，广播
-	Media    int    //消息类型 文字 图片 音频
+	Type     int    // 发送类型 1.私聊，2.群聊3.广播
+	Media    int    //消息类型 1.文字 2.表情包 3.图片 4音频
 	Content  string //消息内容
 	Pic      string
 	Url      string
@@ -43,6 +43,7 @@ var clientMap map[int64]*Node = make(map[int64]*Node, 0)
 // 读写锁
 var rwLocker sync.RWMutex
 
+// 聊天
 func Chat(writer http.ResponseWriter, request *http.Request) {
 	//1.获取参数并校验token等合法性
 	//token :=query.Get("token")
@@ -78,11 +79,13 @@ func Chat(writer http.ResponseWriter, request *http.Request) {
 	go sendProc(node)
 	//6.完成接收的逻辑
 	go recevProc(node)
+	fmt.Println("sendMsg >>>>> userId: ", userId)
 	sendMsg(userId, []byte("欢迎进入聊天系统"))
 }
 
 func sendProc(node *Node) {
 	for {
+		//fmt.Println("sendMsg >>>>> userId: ",userId,data)
 		select {
 		case data := <-node.DataQueue:
 			err := node.Conn.WriteMessage(websocket.TextMessage, data)
